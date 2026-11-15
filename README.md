@@ -23,6 +23,8 @@ Files as pages for [elisp-react](https://github.com/modeverv/elisp-react): a lay
 
 The Lisp prefix is `nextel-`: `next-` is Emacs's own (`next-line`, `next-match`).
 
+The complete API, written so that a coding agent can work from it without guessing: [doc/api.md](doc/api.md).
+
 ## In a project
 
 A project keeps a copy of elisp-next in `vendor/elisp-next/` (the page loads its Lisp from the project, and elisp-studio's preview loads nothing from other sites):

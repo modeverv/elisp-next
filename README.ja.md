@@ -23,6 +23,8 @@
 
 Lisp の接頭辞は `nextel-` です。`next-` は Emacs 自身のもの（`next-line`、`next-match`）だからです。
 
+完全な API は、コーディングエージェントが推測せずに使えるように書いた [doc/api.md](doc/api.md)（英語）にあります。
+
 ## プロジェクトで使う
 
 プロジェクトは elisp-next のコピーを `vendor/elisp-next/` に持ちます（ページは Lisp をプロジェクトから読み込み、elisp-studio のプレビューはほかのサイトのものを読み込まないためです）。
