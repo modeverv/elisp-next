@@ -100,6 +100,7 @@ A page gets the props `:route`, a plist `(:page :pattern :path :params :query)`,
 `server.el` of the project:
 
 ```elisp
+(declare-function nextel-server-load "nextel-server")   ; or the byte compiler warns at every start
 (load (expand-file-name "vendor/elisp-next/lisp/nextel-server.el" app-server-project-directory) nil t)
 (nextel-server-load)
 ```

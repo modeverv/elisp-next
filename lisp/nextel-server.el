@@ -6,6 +6,7 @@
 
 ;; server.el:
 ;;
+;;   (declare-function nextel-server-load "nextel-server")
 ;;   (load (expand-file-name "vendor/elisp-next/lisp/nextel-server.el" app-server-project-directory) nil t)
 ;;   (nextel-server-load)
 ;;
