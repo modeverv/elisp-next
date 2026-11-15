@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    name: Emacs Lisp tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      # react.el and react-testing.el, for the page side.
+      - uses: actions/checkout@v4
+        with:
+          repository: modeverv/elisp-react
+          path: elisp-react
+      # app-server.el, for the server side.
+      - uses: actions/checkout@v4
+        with:
+          repository: modeverv/elisp-studio
+          path: elisp-studio
+      - name: Install Emacs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y emacs-nox
+      - name: Test
+        run: |
+          emacs --version | head -1
+          ELISP_REACT=elisp-react ELISP_STUDIO=elisp-studio test/run-ert.sh
