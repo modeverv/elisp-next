@@ -14,7 +14,7 @@
 | そのアドレス | ファイルのパス | ファイルのパス: `pages/channel/[id].el` は `/channel/ID` |
 | 全ページを囲むもの | `layout.js` | `pages/_layout.el`、`(nextel-layout Layout ...)` |
 | 見つからないとき | `not-found.js` | `pages/404.el` |
-| ページのデータ | サーバーコンポーネント | `:load`（awaitable）。待つ間は `:loading`、失敗は `:error` |
+| ページのデータ | サーバーコンポーネント | `:load`（`nextel-request` などの awaitable）。待つ間は `:loading`、失敗は `:error` |
 | タイトルと meta | `generateMetadata` | `:head` |
 | リンク | `<Link href>` | `(Link (:href (nextel-href "/watch" :v id)) ...)` |
 | API | `app/api/later/route.js` が `GET`、`POST` を export | `api/later.el` に `(nextel-handle "GET" ...)`、`(nextel-handle "POST" ...)` |
@@ -24,6 +24,7 @@
 Lisp の接頭辞は `nextel-` です。`next-` は Emacs 自身のもの（`next-line`、`next-match`）だからです。
 
 完全な API は、コーディングエージェントが推測せずに使えるように書いた [doc/api.md](doc/api.md)（英語）にあります。
+[SKILL.md](SKILL.md) は、エージェントにそれを読んで実装するよう指示する Agent Skill です。このリポジトリを skills のディレクトリに clone して使います（Claude Code なら `~/.claude/skills/elisp-next`、プロジェクトごとなら `.claude/skills/elisp-next`）。
 
 ## プロジェクトで使う
 
@@ -74,7 +75,7 @@ M-x nextel-routes-mode      pages/、api/、shared/ のファイルを保存す�
 
 | | |
 |---|---|
-| `:load (ROUTE)` | awaitable（`react-await`）。答えが来るとページを描き、その値は `(nextel-data SELF)` です。答えはルートごとに保存され（`react-query`）、戻るとすぐに表示されます。 |
+| `:load (ROUTE)` | awaitable。つまり、`nextel-request` が返すような RESOLVE と REJECT の関数です。`react-async` のタスクは使えません（描画が失敗します。`(react-race (list TASK))` で包みます）。答えが来るとページを描き、その値は `(nextel-data SELF)` です。答えはルートごとに保存され（`react-query`）、戻るとすぐに表示されます。古くなっても読み込み直しません（`nextel-stale-ms` は効きません）。読み込み直すには `(nextel-reload)` を呼びます。 |
 | `:loading (ROUTE)`、`:error (ROUTE ERROR RETRY)` | 待つ間（失敗のあと読み込み直す間も）と、失敗したときに表示するもの。既定は `nextel-loading-function`、`nextel-error-function`。 |
 | `:head (ROUTE DATA)` | `(:title TEXT :description TEXT :meta ((NAME . CONTENT) ...))`。文書のタイトルは `(funcall nextel-title-function TITLE)`。 |
 
@@ -93,7 +94,7 @@ M-x nextel-routes-mode      pages/、api/、shared/ のファイルを保存す�
 | `(nextel-href PATTERN PARAMS...)` | アドレス。`(nextel-href "/channel/[id]" :id "UC1")` は `"#/channel/UC1"`、`(nextel-href "/watch" :v "x" :t 30)` は `"#/watch?v=x&t=30"`。 |
 | `(Link (:href HREF ...) CHILD...)` | リンク。ハッシュ方式ではブラウザが辿る `<a>`、パス方式では Lisp が辿ります。 |
 | `(nextel-go PATTERN PARAMS...)`、`(nextel-navigate HREF [REPLACE])` | Lisp から移動します。 |
-| `nextel-navigate-functions` | 新しいアドレスのページを描いたあとに呼ぶ ROUTE の関数（先頭へのスクロール、ドロワーを閉じるなど）。 |
+| `nextel-navigate-functions` | ルーターが、パスかクエリの変わったアドレスを描いたあとに呼ぶ ROUTE の関数です。最初のアドレスでも呼びます（先頭へのスクロール、ドロワーを閉じるなど）。`:load` のあるページでは `:loading` を描いたときに呼び、データが届いたときには呼びません。 |
 | `(nextel-reload)`、`(nextel-refresh)` | 全ページのデータを読み込み直す（データ源が変わったとき）、ページを描き直す（`nextel-page-props-function` の答えが変わったとき）。 |
 | `nextel-url-mode`、`nextel-base-path` | `hash`（既定。`#/watch?v=ID`。どの静的ホストでも、elisp-studio のプレビューでも動く）または `path`（`nextel-base-path` の下の `/watch?v=ID`。サーバーはどのルートにも `index.html` を返す必要があります）。 |
 
@@ -122,7 +123,7 @@ M-x nextel-routes-mode      pages/、api/、shared/ のファイルを保存す�
              (app-server-write "later" (cons (plist-get request :body) (app-server-read "later" nil)))))
 ```
 
-`REQUEST` は `(:method :path :params :body)` です。body はデータで（`app-server-data`）、評価されることはありません。クエリは `(app-server-parameter NAME)` で読みます。`:accepts` に合わない body は、どの項目が違うかを添えて断ります（400、`body.id is required`）。`:returns` に合わない答えはサーバーの誤りです（500、ログに出ます）。あとで返す答え（`app-server-defer`）も同じです。ファイルのないパスは 404、ファイルが扱わないメソッドは 405 です。サーバーはディレクトリを自分で読むので、新しいファイルは次の起動でルートになります。[elisp-studio](https://github.com/modeverv/elisp-studio) の `app-server.el` の上で、ネイティブの Emacs（`run.sh`）でも studio のブラウザのタブでも同じように動きます。
+`REQUEST` は `(:method :path :params :body)` です。body はデータで（`app-server-data`）、評価されることはありません。クエリは `(app-server-parameter NAME)` で読みます。`:accepts` に合わない body は、どの項目が違うかを添えて断ります（400、`body.id is required`）。`:returns` に合わない答えはサーバーの誤りです（500、ログに出ます）。あとで返す答え（`app-server-defer`）も同じです。どのファイルのパターンにも合わないパスは 404 です。合うファイルはあっても、どれもそのメソッドを扱わなければ 405 です。メソッドは、パターンの合うファイルのうち、それを扱う最初のファイルに届きます。`api/things/new.el` が GET だけを扱うとき、`DELETE /api/things/new` は `api/things/[id].el` に `:id "new"` で届きます。サーバーはディレクトリを自分で読むので、新しいファイルは次の起動でルートになります。[elisp-studio](https://github.com/modeverv/elisp-studio) の `app-server.el` の上で、ネイティブの Emacs（`run.sh`）でも studio のブラウザのタブでも同じように動きます。
 
 ## 型
 
@@ -135,7 +136,7 @@ M-x nextel-routes-mode      pages/、api/、shared/ のファイルを保存す�
   (saved number))
 ```
 
-これで `make-my-entry`（検査つき）、`my-entry-p`、項目の `my-entry-id`、`my-entry-title`、`my-entry-saved` が定義されます。レコードは plist なので、Lisp のデータとして印字し、読み戻せます。型は `string`、`integer`、`number`、`boolean`、`symbol`、`keyword`、`any`、スキーマの名前、`(member VALUE...)`、`(list-of TYPE)`、`(vector-of TYPE)`、`(or TYPE...)` です。項目は `:required` でなければ nil でもかまいません。スキーマにないキーは誤りです。`(nextel-check TYPE VALUE)` は VALUE を返すか、どこが違うかを添えて `nextel-type-error` を出します（`my-entry.title: expected string, got 42`）。
+これで `make-my-entry`（検査つき）、`my-entry-p`、項目の `my-entry-id`、`my-entry-title`、`my-entry-saved` が定義されます。レコードは plist なので、Lisp のデータとして印字し、読み戻せます。型は `string`、`integer`、`number`、`boolean`、`symbol`、`keyword`、`any`、スキーマの名前、`(member VALUE...)`、`(list-of TYPE)`、`(vector-of TYPE)`、`(or TYPE...)` です。項目は `:required` でなければ nil でもかまいません。スキーマにないキーは誤りです。`(nextel-check TYPE VALUE)` は VALUE を返すか、どこが違うかを添えて `nextel-type-error` を出します（`my-entry.title: expected string, got 42`）。型でもスキーマでもない TYPE は、普通の `error` になります（`No type or schema named my-entyr`）。
 
 ページは同じ型でサーバーに問い合わせます。
 
@@ -150,6 +151,7 @@ M-x nextel-routes-mode      pages/、api/、shared/ のファイルを保存す�
 - サーバー側での描画はありません（ハッシュはサーバーに届きません）。`nextel-url-mode` を `path` にすれば elisp-studio の `app-server-page-function` で描けるはずですが、未検証です。
 - 全ページを最初に読み込みます（コード分割なし）。レイアウトは1つで、入れ子にはできません。ミドルウェアはありません。
 - 型は値がやりとりされるときに検査されるもので、書いている途中には検査されません（型検査器はありません）。未定義の関数や引数の数の誤りは、今もバイトコンパイラが見つけます。
+- サーバーは `api/` と `shared/` の `*.el` を、隠しファイルも含めてすべて読み込みます（ルートの書き出しは読み飛ばします）。Emacs のロックファイル（未保存のバッファがある間の `api/.#later.el`）があると、サーバーが起動しません。先に保存してください。
 - 2026-11-16 の wasmacs の修正（[wasmacs#21](https://github.com/modeverv/wasmacs/issues/21)）より前は、ページの Emacs でフックが動きませんでした。ルーターは `nextel-navigate-functions` を自分で呼ぶので、どちらでも動きます。
 
 ## テスト
