@@ -97,9 +97,10 @@ M-x nextel-routes-mode      pages/、api/、shared/ のファイルを保存す�
 
 ## サーバー
 
-プロジェクトの `server.el` は次の2行です。
+プロジェクトの `server.el` は次の3行です。
 
 ```elisp
+(declare-function nextel-server-load "nextel-server")   ; ないと起動のたびにバイトコンパイラが警告する
 (load (expand-file-name "vendor/elisp-next/lisp/nextel-server.el" app-server-project-directory) nil t)
 (nextel-server-load)
 ```
