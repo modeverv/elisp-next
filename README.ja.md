@@ -32,8 +32,8 @@ Lisp の接頭辞は `nextel-` です。`next-` は Emacs 自身のもの（`nex
 
 ```sh
 mkdir -p vendor/elisp-next
-curl -L https://github.com/modeverv/elisp-next/archive/refs/tags/v0.1.1.tar.gz \
-  | tar -xz --strip-components=1 -C vendor/elisp-next elisp-next-0.1.1/lisp elisp-next-0.1.1/bin elisp-next-0.1.1/LICENSE
+curl -L https://github.com/modeverv/elisp-next/archive/refs/tags/v0.1.2.tar.gz \
+  | tar -xz --strip-components=1 -C vendor/elisp-next elisp-next-0.1.2/lisp elisp-next-0.1.2/bin elisp-next-0.1.2/LICENSE
 ```
 
 `index.html` には、elisp-next が書く `<script>` タグの置き場所を2つ、アプリケーション自身の Lisp の前後に用意します。
@@ -124,6 +124,8 @@ M-x nextel-routes-mode      pages/、api/、shared/ のファイルを保存す�
 ```
 
 `REQUEST` は `(:method :path :params :body)` です。body はデータで（`app-server-data`）、評価されることはありません。クエリは `(app-server-parameter NAME)` で読みます。`:accepts` に合わない body は、どの項目が違うかを添えて断ります（400、`body.id is required`）。`:returns` に合わない答えはサーバーの誤りです（500、ログに出ます）。あとで返す答え（`app-server-defer`）も同じです。どのファイルのパターンにも合わないパスは 404 です。合えば最も具体的なファイルが答え（`api/things/new.el` は `api/things/[id].el` より先）、そのファイルが扱わないメソッドは 405 です。隠しファイル（Emacs のロックファイル `.#later.el` など）は読み込みません。サーバーはディレクトリを自分で読むので、新しいファイルは次の起動でルートになります。[elisp-studio](https://github.com/modeverv/elisp-studio) の `app-server.el` の上で、ネイティブの Emacs（`run.sh`）でも studio のブラウザのタブでも同じように動きます。
+
+リクエストごとに Emacs を起動する共用ホスト（elisp-studio の CGI、`app-server-single-request`）では、`api/` のすべてではなく、そのリクエストに答えるファイルだけを読み込みます。それ以外では、間違いがすぐ分かるよう、起動時にすべてを読み込みます（`nextel-server-lazy` で選べます）。ファイルの `.elc` が新しければそちらを読み込みます。elisp-studio のデプロイは、そこで `shared/`、`api/`、elisp-next をコンパイルします。さくらのレンタルサーバ（Emacs 27.2）では、Parens への1リクエストは Emacs の中で 7 ms です。
 
 ## 型
 
