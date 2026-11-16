@@ -32,8 +32,8 @@ A project keeps a copy of elisp-next in `vendor/elisp-next/` (the page loads its
 
 ```sh
 mkdir -p vendor/elisp-next
-curl -L https://github.com/modeverv/elisp-next/archive/refs/tags/v0.1.0.tar.gz \
-  | tar -xz --strip-components=1 -C vendor/elisp-next elisp-next-0.1.0/lisp elisp-next-0.1.0/bin elisp-next-0.1.0/LICENSE
+curl -L https://github.com/modeverv/elisp-next/archive/refs/tags/v0.1.1.tar.gz \
+  | tar -xz --strip-components=1 -C vendor/elisp-next elisp-next-0.1.1/lisp elisp-next-0.1.1/bin elisp-next-0.1.1/LICENSE
 ```
 
 `index.html` has two places for the `<script>` tags that elisp-next writes, around the application's own Lisp:
@@ -75,7 +75,7 @@ or in batch: `vendor/elisp-next/bin/nextel-routes` (`--check` for CI, `--watch` 
 
 | | |
 |---|---|
-| `:load (ROUTE)` | An awaitable: a function of RESOLVE and REJECT, as `nextel-request` returns. Not a `react-async` task: the render fails (wrap one: `(react-race (list TASK))`). The page renders when it has answered, with the value as `(nextel-data SELF)`. Answers are kept by route (`react-query`): Back shows them at once, and they are not loaded again because of their age (`nextel-stale-ms` has no effect); `(nextel-reload)` loads them again. |
+| `:load (ROUTE)` | An awaitable: a function of RESOLVE and REJECT, as `nextel-request` returns. Not a `react-async` task: the render fails (wrap one: `(react-race (list TASK))`). The page renders when it has answered, with the value as `(nextel-data SELF)`. Answers are kept by route (`react-query`): Back shows them at once, and loads them again in the background when they are older than `nextel-stale-ms` (60 s); `(nextel-reload)` loads them all again. |
 | `:loading (ROUTE)`, `:error (ROUTE ERROR RETRY)` | What shows meanwhile (also while it loads again after a failure), and after a failure. Defaults: `nextel-loading-function`, `nextel-error-function`. |
 | `:head (ROUTE DATA)` | `(:title TEXT :description TEXT :meta ((NAME . CONTENT) ...))`. The document's title is `(funcall nextel-title-function TITLE)`. |
 
@@ -123,7 +123,7 @@ loads `shared/`, the helpers of `api/` (files and directories whose name starts 
              (app-server-write "later" (cons (plist-get request :body) (app-server-read "later" nil)))))
 ```
 
-`REQUEST` is `(:method :path :params :body)`; the body is data (`app-server-data`), never evaluated; the query is `(app-server-parameter NAME)`. A body that is not of `:accepts` is refused with the field that is wrong (400, `body.id is required`); an answer that is not of `:returns` is the server's mistake (500, logged), also one that comes later (`app-server-defer`). A path that no file's pattern matches is 404; when files match but none handles the method, 405. A method goes to the first matching file that handles it: with `api/things/new.el` handling only GET, `DELETE /api/things/new` goes to `api/things/[id].el` with `:id "new"`. The server reads the directory itself, so a new file is a route at the next start. It runs on [elisp-studio](https://github.com/modeverv/elisp-studio)'s `app-server.el`: under a native Emacs (`run.sh`) and in the studio's browser tab alike.
+`REQUEST` is `(:method :path :params :body)`; the body is data (`app-server-data`), never evaluated; the query is `(app-server-parameter NAME)`. A body that is not of `:accepts` is refused with the field that is wrong (400, `body.id is required`); an answer that is not of `:returns` is the server's mistake (500, logged), also one that comes later (`app-server-defer`). A path that no file's pattern matches is 404. Otherwise the most specific file answers (`api/things/new.el` before `api/things/[id].el`), and a method it does not handle is 405. Hidden files (an Emacs lock file, `.#later.el`) are not loaded. The server reads the directory itself, so a new file is a route at the next start. It runs on [elisp-studio](https://github.com/modeverv/elisp-studio)'s `app-server.el`: under a native Emacs (`run.sh`) and in the studio's browser tab alike.
 
 ## Types
 
@@ -151,7 +151,6 @@ an awaitable whose failure is `(:status N :message TEXT)`; `:status` is nil when
 - No rendering on the server: the hash never reaches it. With `nextel-url-mode` `path`, elisp-studio's `app-server-page-function` could render pages; not tried.
 - Every page is loaded at the start (no code splitting). One layout, not nested ones. No middleware.
 - Types are checked when values cross, not while you type: there is no type checker. The byte compiler still finds unknown functions and wrong argument counts.
-- The server loads every `*.el` file under `api/` and `shared/`, hidden ones too (the routes writer skips them). An Emacs lock file (`api/.#later.el`, while a buffer has unsaved changes) stops the server from starting: save first.
 - The page's Emacs ran no hooks before wasmacs's fix of 2026-11-16 ([wasmacs#21](https://github.com/modeverv/wasmacs/issues/21)); the router calls `nextel-navigate-functions` itself, so either way they run.
 
 ## Tests

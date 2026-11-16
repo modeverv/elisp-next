@@ -76,7 +76,8 @@ an application set them (Parens' are put back afterwards)."
          (nextel-title-function (lambda (title) (or title "")))
          (nextel-loading-function (lambda (_route) ""))
          (nextel-page-props-function nil) (nextel-navigate-functions nil)
-         (nextel--route nil))
+         (nextel-stale-ms 60000) (nextel--loaded-at (make-hash-table :test #'equal))
+         (nextel--route nil) (nextel--arrived nil))
      ,@body))
 
 (nextel-layout NextelTestLayout
@@ -312,6 +313,40 @@ through a buffer that visits a file, and at a save with `nextel-routes-mode'."
   (expand-file-name "lisp/app-server.el" (or (getenv "ELISP_STUDIO") (expand-file-name "../elisp-studio" nextel-test-root)))
   "elisp-studio's app-server.el, which the server side needs.")
 
+(ert-deftest nextel-router-stale ()
+  ;; Data older than `nextel-stale-ms' is loaded again when the router comes
+  ;; back to its address, in the background: the page shows the old data.
+  (nextel-test-with-app
+    (let ((age (lambda (seconds)
+                 (maphash (lambda (key time) (puthash key (- time seconds) nextel--loaded-at))
+                          nextel--loaded-at))))
+      (nextel-test-app "#/items/a")
+      (react-testing-time-passes)
+      (should (equal (react-testing-text (react-testing-find :class "item")) "A"))
+      ;; Fresh: back again, nothing is loaded.
+      (nextel-test-go "#/")
+      (nextel-test-go "#/items/a")
+      (should (equal nextel-test-log '("a")))
+      ;; Older than 60 s: loaded again, the old data shown meanwhile.
+      (funcall age 120)
+      (nextel-test-go "#/")
+      (nextel-test-go "#/items/a")
+      (should (equal nextel-test-log '("a" "a")))
+      (should (equal (react-testing-text (react-testing-find :class "item")) "A"))
+      (should-not (react-testing-find-all :class "loading"))
+      (react-testing-time-passes)
+      (should (equal (react-testing-text (react-testing-find :class "item")) "A"))
+      ;; Rendering again at the same address loads nothing.
+      (funcall age 120)
+      (nextel-refresh)
+      (react-testing-flush)
+      (should (equal nextel-test-log '("a" "a")))
+      ;; nil: never because of age.
+      (setq nextel-stale-ms nil)
+      (nextel-test-go "#/")
+      (nextel-test-go "#/items/a")
+      (should (equal nextel-test-log '("a" "a"))))))
+
 (ert-deftest nextel-server ()
   (skip-unless (file-readable-p nextel-test-studio))
   (load nextel-test-studio nil t)
@@ -328,6 +363,15 @@ through a buffer that visits a file, and at a save with `nextel-routes-mode'."
       (insert "(nextel-handle \"GET\" :returns '(list-of nextel-test-thing) :handler (lambda (_r) nextel-test-things))
 (nextel-handle \"POST\" :accepts 'nextel-test-thing :returns '(list-of nextel-test-thing)
   :handler (lambda (r) (push (plist-get r :body) nextel-test-things)))"))
+    ;; More specific than [id].el: a method it does not handle is 405 there.
+    (with-temp-file (expand-file-name "api/items/new.el" project)
+      (insert "(nextel-handle \"GET\" :handler (lambda (_r) '(:id \"new\")))"))
+    ;; Hidden files are not routes: an Emacs lock file (a dangling link) and
+    ;; a hidden directory.
+    (make-symbolic-link "someone@host.1234:1700000000" (expand-file-name "api/.#items.el" project))
+    (make-directory (expand-file-name "api/.backup" project))
+    (with-temp-file (expand-file-name "api/.backup/items.el" project)
+      (insert "(error \"a hidden file was loaded\")"))
     (with-temp-file (expand-file-name "api/items/[id].el" project)
       (insert "(nextel-handle \"GET\" :returns 'nextel-test-thing
   :handler (lambda (r) (if (equal (plist-get (plist-get r :params) :id) \"broken\") '(:id 1)
@@ -335,7 +379,8 @@ through a buffer that visits a file, and at a save with `nextel-routes-mode'."
 (nextel-handle \"PUT\" :returns 'nextel-test-thing
   :handler (lambda (_r) (app-server-defer (lambda (respond _fail) (funcall respond '(:id \"x\" :n \"later\"))))))"))
     (should (equal (mapcar (lambda (route) (list (car route) (cadr route))) (nextel-server-load project))
-                   '(("/api/items/[id]" "GET") ("/api/items/[id]" "PUT") ("/api/items" "GET") ("/api/items" "POST"))))
+                   '(("/api/items/new" "GET") ("/api/items/[id]" "GET") ("/api/items/[id]" "PUT")
+                     ("/api/items" "GET") ("/api/items" "POST"))))
     (let* ((later nil)
            (call (lambda (method path &optional body)
                    (setq later nil)
@@ -352,6 +397,10 @@ through a buffer that visits a file, and at a save with `nextel-routes-mode'."
       ;; Also one that comes later.
       (should (equal (car (funcall call "PUT" "/api/items/t")) 500))
       (should (equal (car (funcall call "DELETE" "/api/items")) 405))
+      ;; /api/items/new is new.el's: GET there, and PUT is 405 although
+      ;; [id].el, which the path matches too, handles PUT.
+      (should (equal (funcall call "GET" "/api/items/new") '(200 "(:id \"new\")")))
+      (should (equal (funcall call "PUT" "/api/items/new") '(405 "\"PUT is not allowed at /api/items/new\"")))
       (should (equal (car (funcall call "GET" "/api/other")) 404)))))
 
 (provide 'nextel-test)
