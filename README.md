@@ -14,7 +14,7 @@ Files as pages for [elisp-react](https://github.com/modeverv/elisp-react): a lay
 | Its address | the file's path | the file's path: `pages/channel/[id].el` is `/channel/ID` |
 | Around every page | `layout.js` | `pages/_layout.el`, `(nextel-layout Layout ...)` |
 | Not found | `not-found.js` | `pages/404.el` |
-| Data for a page | server components | `:load` (an awaitable); `:loading` and `:error` meanwhile |
+| Data for a page | server components | `:load` (an awaitable, such as `nextel-request`); `:loading` and `:error` meanwhile |
 | Title and meta | `generateMetadata` | `:head` |
 | A link | `<Link href>` | `(Link (:href (nextel-href "/watch" :v id)) ...)` |
 | An API | `app/api/later/route.js` exports `GET`, `POST` | `api/later.el` has `(nextel-handle "GET" ...)`, `(nextel-handle "POST" ...)` |
@@ -24,6 +24,7 @@ Files as pages for [elisp-react](https://github.com/modeverv/elisp-react): a lay
 The Lisp prefix is `nextel-`: `next-` is Emacs's own (`next-line`, `next-match`).
 
 The complete API, written so that a coding agent can work from it without guessing: [doc/api.md](doc/api.md).
+[SKILL.md](SKILL.md) is an Agent Skill that tells an agent to work from it: clone this repository into a skills directory (for Claude Code, `~/.claude/skills/elisp-next`, or `.claude/skills/elisp-next` in a project).
 
 ## In a project
 
@@ -74,7 +75,7 @@ or in batch: `vendor/elisp-next/bin/nextel-routes` (`--check` for CI, `--watch` 
 
 | | |
 |---|---|
-| `:load (ROUTE)` | An awaitable (`react-await`); the page renders when it has answered, with the value as `(nextel-data SELF)`. Answers are kept by route (`react-query`): Back shows them at once. |
+| `:load (ROUTE)` | An awaitable: a function of RESOLVE and REJECT, as `nextel-request` returns. Not a `react-async` task: the render fails (wrap one: `(react-race (list TASK))`). The page renders when it has answered, with the value as `(nextel-data SELF)`. Answers are kept by route (`react-query`): Back shows them at once, and they are not loaded again because of their age (`nextel-stale-ms` has no effect); `(nextel-reload)` loads them again. |
 | `:loading (ROUTE)`, `:error (ROUTE ERROR RETRY)` | What shows meanwhile (also while it loads again after a failure), and after a failure. Defaults: `nextel-loading-function`, `nextel-error-function`. |
 | `:head (ROUTE DATA)` | `(:title TEXT :description TEXT :meta ((NAME . CONTENT) ...))`. The document's title is `(funcall nextel-title-function TITLE)`. |
 
@@ -93,7 +94,7 @@ A page gets the props `:route`, a plist `(:page :pattern :path :params :query)`,
 | `(nextel-href PATTERN PARAMS...)` | An address: `(nextel-href "/channel/[id]" :id "UC1")` is `"#/channel/UC1"`, `(nextel-href "/watch" :v "x" :t 30)` is `"#/watch?v=x&t=30"`. |
 | `(Link (:href HREF ...) CHILD...)` | A link. In the hash mode an `<a>` the browser follows; in the path mode Lisp follows it. |
 | `(nextel-go PATTERN PARAMS...)`, `(nextel-navigate HREF [REPLACE])` | Go there from Lisp. |
-| `nextel-navigate-functions` | Functions of a ROUTE, called after the page of a new address rendered (scroll to the top, close a drawer). |
+| `nextel-navigate-functions` | Functions of a ROUTE, called after the router rendered an address whose path or query changed, the first address included (scroll to the top, close a drawer). For a page with `:load` they run at the render that shows `:loading`, not again when the data comes. |
 | `(nextel-reload)`, `(nextel-refresh)` | Load every page's data again (its source changed); render the page again (what `nextel-page-props-function` says changed). |
 | `nextel-url-mode`, `nextel-base-path` | `hash` (default: `#/watch?v=ID`, any static host, elisp-studio's preview) or `path` (`/watch?v=ID` under `nextel-base-path`; a server sends `index.html` for every route). |
 
@@ -122,7 +123,7 @@ loads `shared/`, the helpers of `api/` (files and directories whose name starts 
              (app-server-write "later" (cons (plist-get request :body) (app-server-read "later" nil)))))
 ```
 
-`REQUEST` is `(:method :path :params :body)`; the body is data (`app-server-data`), never evaluated; the query is `(app-server-parameter NAME)`. A body that is not of `:accepts` is refused with the field that is wrong (400, `body.id is required`); an answer that is not of `:returns` is the server's mistake (500, logged), also one that comes later (`app-server-defer`). A path with no file is 404, a method the file does not handle 405. The server reads the directory itself, so a new file is a route at the next start. It runs on [elisp-studio](https://github.com/modeverv/elisp-studio)'s `app-server.el`: under a native Emacs (`run.sh`) and in the studio's browser tab alike.
+`REQUEST` is `(:method :path :params :body)`; the body is data (`app-server-data`), never evaluated; the query is `(app-server-parameter NAME)`. A body that is not of `:accepts` is refused with the field that is wrong (400, `body.id is required`); an answer that is not of `:returns` is the server's mistake (500, logged), also one that comes later (`app-server-defer`). A path that no file's pattern matches is 404; when files match but none handles the method, 405. A method goes to the first matching file that handles it: with `api/things/new.el` handling only GET, `DELETE /api/things/new` goes to `api/things/[id].el` with `:id "new"`. The server reads the directory itself, so a new file is a route at the next start. It runs on [elisp-studio](https://github.com/modeverv/elisp-studio)'s `app-server.el`: under a native Emacs (`run.sh`) and in the studio's browser tab alike.
 
 ## Types
 
@@ -135,7 +136,7 @@ loads `shared/`, the helpers of `api/` (files and directories whose name starts 
   (saved number))
 ```
 
-defines `make-my-entry` (checked), `my-entry-p` and the fields `my-entry-id`, `my-entry-title`, `my-entry-saved`. A record is a plist, so it prints and reads as Lisp data. Types: `string`, `integer`, `number`, `boolean`, `symbol`, `keyword`, `any`, a schema's name, `(member VALUE...)`, `(list-of TYPE)`, `(vector-of TYPE)`, `(or TYPE...)`. A field may be nil unless `:required`; a key the schema does not name is an error. `(nextel-check TYPE VALUE)` returns VALUE or signals `nextel-type-error` with where it is wrong: `my-entry.title: expected string, got 42`.
+defines `make-my-entry` (checked), `my-entry-p` and the fields `my-entry-id`, `my-entry-title`, `my-entry-saved`. A record is a plist, so it prints and reads as Lisp data. Types: `string`, `integer`, `number`, `boolean`, `symbol`, `keyword`, `any`, a schema's name, `(member VALUE...)`, `(list-of TYPE)`, `(vector-of TYPE)`, `(or TYPE...)`. A field may be nil unless `:required`; a key the schema does not name is an error. `(nextel-check TYPE VALUE)` returns VALUE or signals `nextel-type-error` with where it is wrong: `my-entry.title: expected string, got 42`. A TYPE that is neither a type nor a schema is a plain `error` (`No type or schema named my-entyr`).
 
 The page asks the server with the same types:
 
@@ -150,6 +151,7 @@ an awaitable whose failure is `(:status N :message TEXT)`; `:status` is nil when
 - No rendering on the server: the hash never reaches it. With `nextel-url-mode` `path`, elisp-studio's `app-server-page-function` could render pages; not tried.
 - Every page is loaded at the start (no code splitting). One layout, not nested ones. No middleware.
 - Types are checked when values cross, not while you type: there is no type checker. The byte compiler still finds unknown functions and wrong argument counts.
+- The server loads every `*.el` file under `api/` and `shared/`, hidden ones too (the routes writer skips them). An Emacs lock file (`api/.#later.el`, while a buffer has unsaved changes) stops the server from starting: save first.
 - The page's Emacs ran no hooks before wasmacs's fix of 2026-11-16 ([wasmacs#21](https://github.com/modeverv/wasmacs/issues/21)); the router calls `nextel-navigate-functions` itself, so either way they run.
 
 ## Tests
