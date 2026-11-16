@@ -23,7 +23,7 @@
 
 Lisp の接頭辞は `nextel-` です。`next-` は Emacs 自身のもの（`next-line`、`next-match`）だからです。
 
-完全な API は、コーディングエージェントが推測せずに使えるように書いた [doc/api.md](doc/api.md)（英語）にあります。Web ページ版は <https://modeverv.github.io/elisp-next/api/> です。
+完全な API は、コーディングエージェントが推測せずに使えるように書いた [doc/api.md](doc/api.md)（英語）にあります。日本語訳は [doc/api.ja.md](doc/api.ja.md) で、Web ページ版は <https://modeverv.github.io/elisp-next/api/ja/> です（英語版は <https://modeverv.github.io/elisp-next/api/>）。食い違うときは英語版が正しいものとします。
 [SKILL.md](SKILL.md) は、エージェントにそれを読んで実装するよう指示する Agent Skill です。このリポジトリを skills のディレクトリに clone して使います（Claude Code なら `~/.claude/skills/elisp-next`、プロジェクトごとなら `.claude/skills/elisp-next`）。
 
 ## プロジェクトで使う
