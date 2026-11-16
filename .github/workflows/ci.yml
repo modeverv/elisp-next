@@ -32,3 +32,38 @@ jobs:
         run: |
           emacs --version | head -1
           ELISP_REACT=elisp-react ELISP_STUDIO=elisp-studio test/run-ert.sh
+      # The site (below); a link to an anchor that is not there fails.
+      - name: Build the site
+        run: ELISP_REACT=elisp-react tools/site.sh _site
+
+  # The site: README.md as the home page, doc/api.md as /api/, made with
+  # elisp-react's tools/api-doc.mjs.
+  pages:
+    name: Publish Pages
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: modeverv/elisp-react
+          path: elisp-react
+      - uses: actions/configure-pages@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build the site
+        run: ELISP_REACT=elisp-react tools/site.sh _site --commit "$GITHUB_SHA"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
