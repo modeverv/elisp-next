@@ -23,7 +23,7 @@ Files as pages for [elisp-react](https://github.com/modeverv/elisp-react): a lay
 
 The Lisp prefix is `nextel-`: `next-` is Emacs's own (`next-line`, `next-match`).
 
-The complete API, written so that a coding agent can work from it without guessing: [doc/api.md](doc/api.md).
+The complete API, written so that a coding agent can work from it without guessing: [doc/api.md](doc/api.md), also as a web page: <https://modeverv.github.io/elisp-next/api/>.
 [SKILL.md](SKILL.md) is an Agent Skill that tells an agent to work from it: clone this repository into a skills directory (for Claude Code, `~/.claude/skills/elisp-next`, or `.claude/skills/elisp-next` in a project).
 
 ## In a project
