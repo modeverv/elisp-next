@@ -26,7 +26,7 @@ The components of the pages are elisp-react's: also read elisp-react's API, <htt
 
 ## Workflow
 
-1. Lay the project out as the [worked example](doc/api.md#worked-example) does: `index.html` with its two marker regions, `pages/`, `api/`, `shared/`, `server.el`, and a copy of elisp-next in `vendor/elisp-next/`.
+1. For a new project, copy <https://github.com/modeverv/elisp-web-starter> (a whole application with the versions pinned) and follow its AGENTS.md; the steps below still apply to what you change. Otherwise lay the project out as the [worked example](doc/api.md#worked-example) does: `index.html` with its two marker regions, `pages/`, `api/`, `shared/`, `server.el`, and a copy of elisp-next in `vendor/elisp-next/`.
 2. Types first, in `shared/` (`nextel-defschema`): the page and the server load the same file.
 3. Pages in `pages/`: one `(nextel-page Name ...)` per file, as the first form, with the name Capitalized and unquoted. `pages/channel/[id].el` is `/channel/ID`.
 4. Routes in `api/`: `(nextel-handle "GET" :returns TYPE :handler ...)`, `:accepts` for a body.

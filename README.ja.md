@@ -28,7 +28,9 @@ Lisp の接頭辞は `nextel-` です。`next-` は Emacs 自身のもの（`nex
 
 ## プロジェクトで使う
 
-プロジェクトは elisp-next のコピーを `vendor/elisp-next/` に持ちます（ページは Lisp をプロジェクトから読み込み、elisp-studio のプレビューはほかのサイトのものを読み込まないためです）。
+新しく始めるなら [elisp-web-starter](https://github.com/modeverv/elisp-web-starter) をコピーしてください。elisp-next で書いたアプリケーション一式（画面、API ルート、共有する型、SQL、ネイティブ Emacs と Chrome のテスト）で、elisp-next、elisp-react、elisp-studio、wasmacs の版を固定してあり、コーディングエージェント向けの AGENTS.md も付いています。`./run.sh` で動き、`test/run.sh` で検査できます。
+
+手作業でプロジェクトに加える場合、プロジェクトは elisp-next のコピーを `vendor/elisp-next/` に持ちます（ページは Lisp をプロジェクトから読み込み、elisp-studio のプレビューはほかのサイトのものを読み込まないためです）。
 
 ```sh
 mkdir -p vendor/elisp-next
