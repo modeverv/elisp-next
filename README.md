@@ -32,8 +32,8 @@ A project keeps a copy of elisp-next in `vendor/elisp-next/` (the page loads its
 
 ```sh
 mkdir -p vendor/elisp-next
-curl -L https://github.com/modeverv/elisp-next/archive/refs/tags/v0.1.1.tar.gz \
-  | tar -xz --strip-components=1 -C vendor/elisp-next elisp-next-0.1.1/lisp elisp-next-0.1.1/bin elisp-next-0.1.1/LICENSE
+curl -L https://github.com/modeverv/elisp-next/archive/refs/tags/v0.1.2.tar.gz \
+  | tar -xz --strip-components=1 -C vendor/elisp-next elisp-next-0.1.2/lisp elisp-next-0.1.2/bin elisp-next-0.1.2/LICENSE
 ```
 
 `index.html` has two places for the `<script>` tags that elisp-next writes, around the application's own Lisp:
@@ -124,6 +124,8 @@ loads `shared/`, the helpers of `api/` (files and directories whose name starts 
 ```
 
 `REQUEST` is `(:method :path :params :body)`; the body is data (`app-server-data`), never evaluated; the query is `(app-server-parameter NAME)`. A body that is not of `:accepts` is refused with the field that is wrong (400, `body.id is required`); an answer that is not of `:returns` is the server's mistake (500, logged), also one that comes later (`app-server-defer`). A path that no file's pattern matches is 404. Otherwise the most specific file answers (`api/things/new.el` before `api/things/[id].el`), and a method it does not handle is 405. Hidden files (an Emacs lock file, `.#later.el`) are not loaded. The server reads the directory itself, so a new file is a route at the next start. It runs on [elisp-studio](https://github.com/modeverv/elisp-studio)'s `app-server.el`: under a native Emacs (`run.sh`) and in the studio's browser tab alike.
+
+On a shared host where each request is an Emacs of its own (elisp-studio's CGI, `app-server-single-request`), only the file that answers a request is loaded, not every file of `api/`; elsewhere every file is loaded at the start, so that a mistake shows at once (`nextel-server-lazy` chooses). A file's `.elc` is loaded when it is newer; elisp-studio's deployment compiles `shared/`, `api/` and elisp-next there. On Sakura's rental server (Emacs 27.2) a request to Parens takes 7 ms in Emacs.
 
 ## Types
 

@@ -2,7 +2,7 @@
 
 The complete API of elisp-next, written so that a coding agent can build an application with it without guessing. It assumes Next.js, React and Emacs Lisp, and nothing about elisp-next or elisp-react.
 
-It describes v0.1.1, the `lisp/` of `main`. v0.1.0 differs in three places, each said where it applies: `nextel-stale-ms` had no effect, the server loaded hidden files of api/, and a method fell through to a less specific file. Every message, value and piece of HTML quoted below was produced by running the code in GNU Emacs 31.1 in batch, with elisp-react's `react-testing.el` for the page side and elisp-studio's `app-server.el` for the server side; the [worked example](#worked-example) was run the same way, served with `serve-project.sh` and used in Chrome.
+It describes v0.1.2, the `lisp/` of `main`. v0.1.1 loaded every file of api/ at the start, also under a CGI, and only from source. v0.1.0 differs in three more places, each said where it applies: `nextel-stale-ms` had no effect, the server loaded hidden files of api/, and a method fell through to a less specific file. Every message, value and piece of HTML quoted below was produced by running the code in GNU Emacs 31.1 in batch, with elisp-react's `react-testing.el` for the page side and elisp-studio's `app-server.el` for the server side; the [worked example](#worked-example) was run the same way, served with `serve-project.sh` and used in Chrome.
 
 elisp-next sits on two libraries: [elisp-react](https://github.com/modeverv/elisp-react) (React written in Emacs Lisp; GNU Emacs runs in the web page as WebAssembly) and [elisp-studio](https://github.com/modeverv/elisp-studio)'s `app-server.el` (the server). The parts of them an application needs are in [From elisp-react and app-server.el](#from-elisp-react); their READMEs have the rest.
 
@@ -72,7 +72,8 @@ Every symbol that elisp-next's five files define without `--` in its name: 53 na
 | [`nextel-schema-fields`](#nextel-schema-fields) | function | P S | The fields of a schema. |
 | [`nextel-server-handle`](#nextel-server-handle) | function | S | Answer METHOD PATH BODY from api/; becomes `app-server-handle`. |
 | [`nextel-server-load`](#nextel-server-load) | function | S | Load shared/ and api/ and answer /api/ with them. |
-| [`nextel-server-routes`](#nextel-server-routes) | variable | S | The API route table. |
+| [`nextel-server-routes`](#nextel-server-routes) | variable | S | The API route table: the routes loaded so far. |
+| [`nextel-server-lazy`](#nextel-server-lazy) | variable | S | Load a file of api/ when a request first needs it. |
 | [`nextel-stale-ms`](#nextel-stale-ms) | variable | P | How long a page's data counts as fresh: older data is loaded again when the router comes back to its address. |
 | [`nextel-start`](#nextel-start) | function | P | Mount the router (routes.el calls it). |
 | [`nextel-title-function`](#nextel-title-function) | variable | P | The `:head` title → the document's title. |
@@ -220,8 +221,8 @@ The page loads elisp-next from the project (elisp-studio's preview loads nothing
 
 ```sh
 mkdir -p vendor/elisp-next
-curl -L https://github.com/modeverv/elisp-next/archive/refs/tags/v0.1.1.tar.gz \
-  | tar -xz --strip-components=1 -C vendor/elisp-next elisp-next-0.1.1/lisp elisp-next-0.1.1/bin elisp-next-0.1.1/LICENSE
+curl -L https://github.com/modeverv/elisp-next/archive/refs/tags/v0.1.2.tar.gz \
+  | tar -xz --strip-components=1 -C vendor/elisp-next elisp-next-0.1.2/lisp elisp-next-0.1.2/bin elisp-next-0.1.2/LICENSE
 ```
 
 The routes writer writes its own directory, relative to the project, into the framework region, so it has to be the copy inside the project (any directory inside works; `lib/next/lisp/` was tried). A copy outside fails: `nextel: load the copy of nextel-build.el that is in the project (vendor/elisp-next/lisp/), not DIRECTORY`.
@@ -645,10 +646,14 @@ DIRECTORY defaults to `app-server-project-directory` (else `default-directory`).
 1. loads every `*.el` of `DIRECTORY/shared/` in path order (if the directory exists), leaving out hidden files and directories (names that start with `.`), as in the steps below;
 2. empties [`nextel-server-routes`](#nextel-server-routes);
 3. loads the helpers of api/ (a path component starting with `_`) in path order;
-4. loads every other `*.el` of api/ in path order, each with its pattern current, so that its `nextel-handle` calls register under it;
-5. sorts the routes by pattern (`nextel-pattern<`; methods of a file in the order written);
+4. notes every other `*.el` of api/ with its pattern (from the file name, `nextel-pattern-of-file`), most specific first;
+5. unless loading is lazy (below), loads each of those files with its pattern current, so that its `nextel-handle` calls register under it, and sorts the routes by pattern (`nextel-pattern<`; methods of a file in the order written);
 6. makes `app-server-handle` an alias of `nextel-server-handle`;
-7. returns `nextel-server-routes`.
+7. returns `nextel-server-routes`: every route, or nil when loading is lazy.
+
+A file is loaded from its `.elc` when that is newer than the file (elisp-studio's `server/cgi/install.sh` compiles shared/ and api/ where it deploys; nothing else writes them).
+
+**Lazy loading.** When [`nextel-server-lazy`](#nextel-server-lazy) or elisp-studio's `app-server-single-request` is non-nil (its `serve-cgi.el` sets the latter: a CGI starts one Emacs per request), step 5 is left out: `nextel-server-handle` loads the file that answers a request when the request comes, and no other file of api/. The answers are the same, 404 and 405 included. What a request needs from elsewhere belongs in shared/ or a helper, which are always loaded. Measured on Sakura's rental server (Emacs 27.2) with Parens, 4 route files: a request takes 7 ms in Emacs once elisp-next, `shared/` and `api/` are compiled. With so few small files loading all of them costs about as much as loading one (within 1 ms); lazy loading matters as `api/` grows, and the compiled files matter at once (nextel-schema.el and nextel-route.el: 2.3 ms from source, 0.3 ms compiled).
 
 The server reads the directory itself (routes.el is not used): a new or renamed api/ file is a route when `nextel-server-load` runs again, i.e. at the next start of the server. elisp-studio's `--native-server` restarts it when a file it loaded is saved; with serve-project.sh, restart it.
 
@@ -670,7 +675,7 @@ The handler returns: Lisp data (sent printed, 200); `(app-server-defer (lambda (
 <a id="nextel-server-handle"></a>
 ### `(nextel-server-handle METHOD PATH BODY)`
 
-What `app-server-handle` is after `nextel-server-load`. The most specific pattern that matches PATH answers (the first in the tried order; routes of two files of that one pattern count together), and a METHOD that it does not handle is 405, also when a less specific file would: `DELETE /api/things/new`, with `api/things/new.el` handling only GET, is 405 even if `api/things/[id].el` handles DELETE. (v0.1.0 went on to the next matching file.) Answers (verified, the text as sent):
+What `app-server-handle` is after `nextel-server-load`. It tries the noted files in order (most specific first), loading each that matches PATH if it is not loaded, and the first whose pattern has a route answers. The most specific pattern that matches PATH answers (the first in the tried order; routes of two files of that one pattern count together), and a METHOD that it does not handle is 405, also when a less specific file would: `DELETE /api/things/new`, with `api/things/new.el` handling only GET, is 405 even if `api/things/[id].el` handles DELETE. (v0.1.0 went on to the next matching file.) Answers (verified, the text as sent):
 
 | Case | Status | Body |
 |---|---|---|
@@ -692,7 +697,12 @@ Text after the first datum of BODY is ignored. A body may contain only strings, 
 <a id="nextel-server-routes"></a>
 ### `nextel-server-routes` — variable
 
-`((PATTERN METHOD . SPEC) ...)` in the order tried; SPEC is the plist given to `nextel-handle`.
+`((PATTERN METHOD . SPEC) ...)` in the order tried; SPEC is the plist given to `nextel-handle`. With lazy loading it has the routes of the files loaded so far.
+
+<a id="nextel-server-lazy"></a>
+### `nextel-server-lazy` — variable
+
+nil by default: every file of api/ is loaded at the start, so that a mistake in one shows when the server starts (in the studio, when it is saved). Non-nil: as `app-server-single-request` (above). Set it before `nextel-server-load`.
 
 <a id="running-the-server"></a>
 ### Running it
@@ -873,6 +883,7 @@ Both sides run in one native Emacs (`emacs --batch`), as elisp-next's own `test/
 24. **The router calls `nextel-navigate-functions`** at the first render and on every change of path or query (also query only), once per address, before a `:load` page's data comes.
 25. **Only top-level `pages/_layout.el` and `pages/404.el` are special**; one layout, no nesting.
 26. **HTTP methods are exact strings**: `"GET"`, not `"get"` or `'get`; HEAD and OPTIONS are not answered unless a file handles them.
+27. **What more than one route needs belongs in shared/ or a helper of api/** (`api/_name.el`), as do `app-server-defjob` calls: under elisp-studio's CGI (`app-server-single-request`) a route file is loaded only when a request for its pattern comes, so a function defined in `api/a.el` is not there when `api/b.el` answers (a `void-function` error), and a job defined in a route file is unknown to `job.sh`.
 
 <a id="worked-example"></a>
 ## Worked example

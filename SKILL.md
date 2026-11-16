@@ -36,7 +36,7 @@ The components of the pages are elisp-react's: also read elisp-react's API, <htt
 
 ## Rules that are easy to break
 
-These are a selection; [Rules and pitfalls](doc/api.md#pitfalls) has all 26 with the reasons.
+These are a selection; [Rules and pitfalls](doc/api.md#pitfalls) has all 27 with the reasons.
 
 - The prefix is `nextel-`, not `next-`. Give your own code a prefix of its own.
 - Every file starts with `-*- lexical-binding: t; -*-`.
@@ -46,3 +46,4 @@ These are a selection; [Rules and pitfalls](doc/api.md#pitfalls) has all 26 with
 - Keywords go in (`nextel-href`, `nextel-param`: `:id`), strings come out (`nextel-query self "v"`; parameters are strings).
 - `server.el` is three lines, including `(declare-function nextel-server-load "nextel-server")`.
 - An error in a handler is a 400. Refuse on purpose with `app-server-refuse` and a status.
+- What more than one route needs (functions, variables, `app-server-defjob`) goes in `shared/` or a helper of api/ (`api/_name.el`): on a shared host a route file is loaded only when its own request comes.

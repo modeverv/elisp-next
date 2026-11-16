@@ -347,12 +347,11 @@ through a buffer that visits a file, and at a save with `nextel-routes-mode'."
       (nextel-test-go "#/items/a")
       (should (equal nextel-test-log '("a" "a"))))))
 
-(ert-deftest nextel-server ()
-  (skip-unless (file-readable-p nextel-test-studio))
-  (load nextel-test-studio nil t)
-  (load (expand-file-name "lisp/nextel-server.el" nextel-test-root) nil t)
-  (let* ((project (make-temp-file "nextel-test-project" t))
-         (app-server-data-directory (expand-file-name ".data/" project)))
+(defvar nextel-test-things)
+
+(defun nextel-test-server-project ()
+  "A project with shared/ and api/: a directory to delete afterwards."
+  (let ((project (make-temp-file "nextel-test-project" t)))
     (make-directory (expand-file-name "api/items" project) t)
     (make-directory (expand-file-name "shared" project) t)
     (with-temp-file (expand-file-name "shared/types.el" project)
@@ -378,30 +377,95 @@ through a buffer that visits a file, and at a save with `nextel-routes-mode'."
                          (or (car nextel-test-things) (app-server-refuse \"none\" 404)))))
 (nextel-handle \"PUT\" :returns 'nextel-test-thing
   :handler (lambda (_r) (app-server-defer (lambda (respond _fail) (funcall respond '(:id \"x\" :n \"later\"))))))"))
-    (should (equal (mapcar (lambda (route) (list (car route) (cadr route))) (nextel-server-load project))
-                   '(("/api/items/new" "GET") ("/api/items/[id]" "GET") ("/api/items/[id]" "PUT")
-                     ("/api/items" "GET") ("/api/items" "POST"))))
-    (let* ((later nil)
-           (call (lambda (method path &optional body)
-                   (setq later nil)
-                   (let ((answer (app-server-respond method path (or body "")
-                                                     (lambda (status text _headers) (setq later (list status text))))))
-                     (if answer (list (aref answer 0) (aref answer 1)) later)))))
-      (should (equal (funcall call "GET" "/api/items") '(200 "nil")))
-      (should (equal (funcall call "POST" "/api/items" "(:id \"t\" :n 2)") '(200 "((:id \"t\" :n 2))")))
-      (should (equal (funcall call "POST" "/api/items" "(:n 2)") '(400 "\"body.id is required\"")))
-      (should (equal (funcall call "POST" "/api/items" "(:id \"t\" :n \"2\")") '(400 "\"body.n: expected integer, got \\\"2\\\"\"")))
-      (should (equal (funcall call "GET" "/api/items/t") '(200 "(:id \"t\" :n 2)")))
-      ;; An answer of the wrong type is the server's mistake.
-      (should (equal (car (funcall call "GET" "/api/items/broken")) 500))
-      ;; Also one that comes later.
-      (should (equal (car (funcall call "PUT" "/api/items/t")) 500))
-      (should (equal (car (funcall call "DELETE" "/api/items")) 405))
-      ;; /api/items/new is new.el's: GET there, and PUT is 405 although
-      ;; [id].el, which the path matches too, handles PUT.
-      (should (equal (funcall call "GET" "/api/items/new") '(200 "(:id \"new\")")))
-      (should (equal (funcall call "PUT" "/api/items/new") '(405 "\"PUT is not allowed at /api/items/new\"")))
-      (should (equal (car (funcall call "GET" "/api/other")) 404)))))
+    project))
+
+(defun nextel-test-server-call (method path &optional body)
+  "(STATUS TEXT) of METHOD at PATH, also of an answer that comes later."
+  (let* ((later nil)
+         (answer (app-server-respond method path (or body "")
+                                     (lambda (status text _headers) (setq later (list status text))))))
+    (if answer (list (aref answer 0) (aref answer 1)) later)))
+
+(defun nextel-test-server-answers ()
+  "The answers of the project of `nextel-test-server-project', as before."
+  (setq nextel-test-things nil)
+  (should (equal (nextel-test-server-call "GET" "/api/items") '(200 "nil")))
+  (should (equal (nextel-test-server-call "POST" "/api/items" "(:id \"t\" :n 2)") '(200 "((:id \"t\" :n 2))")))
+  (should (equal (nextel-test-server-call "POST" "/api/items" "(:n 2)") '(400 "\"body.id is required\"")))
+  (should (equal (nextel-test-server-call "POST" "/api/items" "(:id \"t\" :n \"2\")") '(400 "\"body.n: expected integer, got \\\"2\\\"\"")))
+  (should (equal (nextel-test-server-call "GET" "/api/items/t") '(200 "(:id \"t\" :n 2)")))
+  ;; An answer of the wrong type is the server's mistake.
+  (should (equal (car (nextel-test-server-call "GET" "/api/items/broken")) 500))
+  ;; Also one that comes later.
+  (should (equal (car (nextel-test-server-call "PUT" "/api/items/t")) 500))
+  (should (equal (car (nextel-test-server-call "DELETE" "/api/items")) 405))
+  ;; /api/items/new is new.el's: GET there, and PUT is 405 although
+  ;; [id].el, which the path matches too, handles PUT.
+  (should (equal (nextel-test-server-call "GET" "/api/items/new") '(200 "(:id \"new\")")))
+  (should (equal (nextel-test-server-call "PUT" "/api/items/new") '(405 "\"PUT is not allowed at /api/items/new\"")))
+  (should (equal (car (nextel-test-server-call "GET" "/api/other")) 404)))
+
+(ert-deftest nextel-server ()
+  (skip-unless (file-readable-p nextel-test-studio))
+  (load nextel-test-studio nil t)
+  (load (expand-file-name "lisp/nextel-server.el" nextel-test-root) nil t)
+  (let* ((project (nextel-test-server-project))
+         (app-server-data-directory (expand-file-name ".data/" project))
+         (nextel-server-lazy nil))
+    (unwind-protect
+        (progn
+          (should (equal (mapcar (lambda (route) (list (car route) (cadr route))) (nextel-server-load project))
+                         '(("/api/items/new" "GET") ("/api/items/[id]" "GET") ("/api/items/[id]" "PUT")
+                           ("/api/items" "GET") ("/api/items" "POST"))))
+          (nextel-test-server-answers))
+      (delete-directory project t))))
+
+(ert-deftest nextel-server-lazy ()
+  ;; One process per request (a CGI): only the file that answers is loaded.
+  (skip-unless (file-readable-p nextel-test-studio))
+  (load nextel-test-studio nil t)
+  (load (expand-file-name "lisp/nextel-server.el" nextel-test-root) nil t)
+  (let* ((project (nextel-test-server-project))
+         (app-server-data-directory (expand-file-name ".data/" project))
+         (nextel-server-lazy t)
+         (file (lambda (name) (expand-file-name name project))))
+    (unwind-protect
+        (progn
+          (with-temp-file (funcall file "api/boom.el")
+            (insert "(error \"api/boom.el was loaded\")"))
+          ;; shared/ and the helpers are loaded, no route.
+          (should (equal (nextel-server-load project) nil))
+          (should (fboundp 'nextel-test-thing-p))
+          (should (boundp 'nextel-test-things))
+          (should (equal (nextel-test-server-call "GET" "/api/items/new") '(200 "(:id \"new\")")))
+          (should (equal nextel-server--loaded (list (funcall file "api/items/new.el"))))
+          ;; [id].el first: then new.el is still the one for /api/items/new.
+          (nextel-server-load project)
+          (setq nextel-test-things nil)
+          (should (equal (nextel-test-server-call "GET" "/api/items/x") '(404 "\"none\"")))
+          (should (equal (nextel-test-server-call "PUT" "/api/items/new") '(405 "\"PUT is not allowed at /api/items/new\"")))
+          (should (equal (sort (mapcar #'file-name-nondirectory nextel-server--loaded) #'string<) '("[id].el" "new.el")))
+          ;; Every answer as when all is loaded, and api/boom.el never read.
+          (nextel-server-load project)
+          (nextel-test-server-answers)
+          (should-not (member (funcall file "api/boom.el") nextel-server--loaded))
+          ;; app-server-single-request (elisp-studio's serve-cgi.el) means the same.
+          (dlet ((nextel-server-lazy nil) (app-server-single-request t))
+            (should (equal (nextel-server-load project) nil)))
+          ;; A compiled file newer than its source is loaded instead.
+          (with-temp-file (funcall file "api/items/new.el")
+            (insert "(nextel-handle \"GET\" :handler (lambda (_r) '(:id \"compiled\")))"))
+          (let ((byte-compile-warnings nil)) (byte-compile-file (funcall file "api/items/new.el")))
+          (with-temp-file (funcall file "api/items/new.el")
+            (insert "(nextel-handle \"GET\" :handler (lambda (_r) '(:id \"source\")))"))
+          (set-file-times (funcall file "api/items/new.el") (time-subtract (current-time) 60))
+          (nextel-server-load project)
+          (should (equal (nextel-test-server-call "GET" "/api/items/new") '(200 "(:id \"compiled\")")))
+          ;; ... and not when the source is newer.
+          (set-file-times (funcall file "api/items/new.el") (time-add (current-time) 60))
+          (nextel-server-load project)
+          (should (equal (nextel-test-server-call "GET" "/api/items/new") '(200 "(:id \"source\")"))))
+      (delete-directory project t))))
 
 (provide 'nextel-test)
 ;;; nextel-test.el ends here
