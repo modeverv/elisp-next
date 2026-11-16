@@ -2,7 +2,7 @@
 
 The complete API of elisp-next, written so that a coding agent can build an application with it without guessing. It assumes Next.js, React and Emacs Lisp, and nothing about elisp-next or elisp-react.
 
-It describes v0.1.0 (the `lisp/` of `main` differs from that tag only in a comment). Every message, value and piece of HTML quoted below was produced by running the code in GNU Emacs 31.1 in batch, with elisp-react's `react-testing.el` for the page side and elisp-studio's `app-server.el` for the server side; the [worked example](#worked-example) was run the same way, served with `serve-project.sh` and used in Chrome.
+It describes v0.1.1, the `lisp/` of `main`. v0.1.0 differs in three places, each said where it applies: `nextel-stale-ms` had no effect, the server loaded hidden files of api/, and a method fell through to a less specific file. Every message, value and piece of HTML quoted below was produced by running the code in GNU Emacs 31.1 in batch, with elisp-react's `react-testing.el` for the page side and elisp-studio's `app-server.el` for the server side; the [worked example](#worked-example) was run the same way, served with `serve-project.sh` and used in Chrome.
 
 elisp-next sits on two libraries: [elisp-react](https://github.com/modeverv/elisp-react) (React written in Emacs Lisp; GNU Emacs runs in the web page as WebAssembly) and [elisp-studio](https://github.com/modeverv/elisp-studio)'s `app-server.el` (the server). The parts of them an application needs are in [From elisp-react and app-server.el](#from-elisp-react); their READMEs have the rest.
 
@@ -73,7 +73,7 @@ Every symbol that elisp-next's five files define without `--` in its name: 53 na
 | [`nextel-server-handle`](#nextel-server-handle) | function | S | Answer METHOD PATH BODY from api/; becomes `app-server-handle`. |
 | [`nextel-server-load`](#nextel-server-load) | function | S | Load shared/ and api/ and answer /api/ with them. |
 | [`nextel-server-routes`](#nextel-server-routes) | variable | S | The API route table. |
-| [`nextel-stale-ms`](#nextel-stale-ms) | variable | P | The `:stale-ms` given to `react-query` (see its entry: no effect on revisits). |
+| [`nextel-stale-ms`](#nextel-stale-ms) | variable | P | How long a page's data counts as fresh: older data is loaded again when the router comes back to its address. |
 | [`nextel-start`](#nextel-start) | function | P | Mount the router (routes.el calls it). |
 | [`nextel-title-function`](#nextel-title-function) | variable | P | The `:head` title → the document's title. |
 | [`nextel-type-error`](#nextel-type-error) | error symbol | P S | What type checks signal. |
@@ -176,7 +176,7 @@ pages/:
 api/:
 
 - A file or directory whose name starts with `_` is a helper, loaded before the routes in path order. Every other `*.el` is a route; it may handle any number of methods.
-- The server does not skip hidden files (the writer does): see [pitfall 17](#pitfalls).
+- The server skips hidden files and directories too (since v0.1.1; v0.1.0 loaded them, and an Emacs lock file stopped it from starting).
 - Two files of one pattern (`api/things.el`, `api/things/index.el`) are not an error: both register, and for each method the first loaded (path order) wins.
 
 shared/: every `*.el` below it, in path order (`shared/sub/a.el` before `shared/z.el`). Both sides load it, the page before your scripts and pages, the server before api/. A file of shared/ may use nextel-schema.el and Emacs only: not react.el (absent on the server) nor app-server.el (absent on the page). `(require 'nextel-schema)` at its top works on both sides.
@@ -220,8 +220,8 @@ The page loads elisp-next from the project (elisp-studio's preview loads nothing
 
 ```sh
 mkdir -p vendor/elisp-next
-curl -L https://github.com/modeverv/elisp-next/archive/refs/tags/v0.1.0.tar.gz \
-  | tar -xz --strip-components=1 -C vendor/elisp-next elisp-next-0.1.0/lisp elisp-next-0.1.0/bin elisp-next-0.1.0/LICENSE
+curl -L https://github.com/modeverv/elisp-next/archive/refs/tags/v0.1.1.tar.gz \
+  | tar -xz --strip-components=1 -C vendor/elisp-next elisp-next-0.1.1/lisp elisp-next-0.1.1/bin elisp-next-0.1.1/LICENSE
 ```
 
 The routes writer writes its own directory, relative to the project, into the framework region, so it has to be the copy inside the project (any directory inside works; `lib/next/lisp/` was tried). A copy outside fails: `nextel: load the copy of nextel-build.el that is in the project (vendor/elisp-next/lisp/), not DIRECTORY`.
@@ -281,7 +281,7 @@ What the router renders inside the layout:
 - Returns a function of `(RESOLVE REJECT)`: `nextel-request`, `react-fetch-async`, `react-sleep`, `react-all`, `react-race`, or your own lambda. **A `react-async` task is not one**: the router's render fails (`react-render-error`, `Invalid function: #s(react-task ...)`). Wrap it: `(react-race (list (react-async ...)))` works.
 - What it resolves is `:data` (`(nextel-data SELF)`); what it rejects with is ERROR for `:error` (for `nextel-request`, `(:status N :message TEXT)`).
 - The data is kept by key (`react-query`): back at an address with the same page, params and query, the page shows at once and nothing is loaded. Another query string is another key and loads again.
-- Data is not reloaded because of its age: the router stays subscribed to every key it has read, so revisits never reload, whatever [`nextel-stale-ms`](#nextel-stale-ms) says. After the source of the data changed, call [`nextel-reload`](#nextel-reload).
+- Data older than [`nextel-stale-ms`](#nextel-stale-ms) (60 s) is loaded again when the router comes back to its address: in the background, the page showing the data it has meanwhile (no `:loading`), and `:load` called again. Rendering again at the same address loads nothing. After the source of the data changed, call [`nextel-reload`](#nextel-reload).
 
 #### `:loading` and `:error`
 
@@ -388,7 +388,7 @@ What `nextel-define-routes` set: `((PATTERN . PAGE) ...)` in the order tried, th
 <a id="nextel-stale-ms"></a>
 ### `nextel-stale-ms` — variable
 
-60000. Passed as `:stale-ms` to `react-query` for every page's data. react-query reloads stale data only when a component reads a key for the first time; the router reads every key again as the same component, so a revisit never reloads, with any value (checked with 0). In effect it does nothing; use `nextel-reload`.
+60000: how long, in milliseconds, a page's loaded data counts as fresh. When the router comes to an address (its page, params or query differ from the address it rendered last) whose data was loaded longer ago than that, it loads the data again in the background (`react-invalidate` of its key): the page keeps showing the data it has, then renders with the new data. nil: never because of age (only `nextel-reload` and a retry load again). The router keeps the time of each load itself: `react-query`'s own `:stale-ms` looks at age only when a component reads a key for the first time, and the router keeps reading every key it has read. (v0.1.0: no effect.)
 
 ## Addresses and navigation
 
@@ -642,7 +642,7 @@ nextel-server.el, under elisp-studio's app-server.el.
 
 DIRECTORY defaults to `app-server-project-directory` (else `default-directory`). It:
 
-1. loads every `*.el` of `DIRECTORY/shared/` in path order (if the directory exists);
+1. loads every `*.el` of `DIRECTORY/shared/` in path order (if the directory exists), leaving out hidden files and directories (names that start with `.`), as in the steps below;
 2. empties [`nextel-server-routes`](#nextel-server-routes);
 3. loads the helpers of api/ (a path component starting with `_`) in path order;
 4. loads every other `*.el` of api/ in path order, each with its pattern current, so that its `nextel-handle` calls register under it;
@@ -670,13 +670,13 @@ The handler returns: Lisp data (sent printed, 200); `(app-server-defer (lambda (
 <a id="nextel-server-handle"></a>
 ### `(nextel-server-handle METHOD PATH BODY)`
 
-What `app-server-handle` is after `nextel-server-load`. Takes every route whose pattern matches PATH, then the first of them (in the tried order) that has METHOD: so `DELETE /api/things/new`, with `api/things/new.el` handling only GET, goes to `api/things/[id].el` with `:id "new"`. Answers (verified, the text as sent):
+What `app-server-handle` is after `nextel-server-load`. The most specific pattern that matches PATH answers (the first in the tried order; routes of two files of that one pattern count together), and a METHOD that it does not handle is 405, also when a less specific file would: `DELETE /api/things/new`, with `api/things/new.el` handling only GET, is 405 even if `api/things/[id].el` handles DELETE. (v0.1.0 went on to the next matching file.) Answers (verified, the text as sent):
 
 | Case | Status | Body |
 |---|---|---|
 | The handler's answer | 200 | `(:id "1" :title "Milk")` |
 | No pattern matches | 404 | `"No such API: /api/nothing"` |
-| Patterns match, none has METHOD | 405 | `"DELETE is not allowed at /api/items"` |
+| The most specific matching pattern has no METHOD | 405 | `"DELETE is not allowed at /api/items"` |
 | BODY is not Lisp data | 400 | `"The request is not Lisp data"` |
 | BODY names a symbol the server's Emacs does not know | 400 | `"The request names something unknown: :surprise"` |
 | BODY not of `:accepts` | 400 | `"body.title: expected string, got 3"` |
@@ -857,13 +857,13 @@ Both sides run in one native Emacs (`emacs --batch`), as elisp-next's own `test/
 8. **nil is absent.** A `:required` field cannot be nil; `boolean` false is the field left out; `(member nil ...)` cannot be told from absence.
 9. **Keywords in, strings out.** `nextel-href`, `nextel-go`, `nextel-request` and `nextel-param` take keywords (`:id`, `:v`); `nextel-query` takes a string (`"v"`). Parameters and query values come back as strings: `(string-to-number (nextel-query self "t"))`.
 10. **`:load` returns a function of RESOLVE and REJECT**, not a `react-async` task (the router fails); wrap a task in `(react-race (list TASK))`.
-11. **Data is cached by page, params and query, for good.** A new query string loads again; a revisit never does (`nextel-stale-ms` has no effect). After a request that changed data, call `nextel-reload` (it reloads every page visited).
+11. **Data is cached by page, params and query.** A new query string loads again; a revisit loads again in the background only when the data is older than `nextel-stale-ms` (60 s). After a request that changed data, call `nextel-reload` (it reloads every page visited).
 12. **`<meta>` set by `:head` stay** on later pages that do not set them.
 13. **`:body`, `:sends`, `:returns` are not query parameters** of `nextel-request`; every other keyword is.
 14. **A `:sends` failure is signalled at once** (`nextel-type-error`, message in `(cadr err)`); a server or `:returns` failure arrives through the awaitable (`react-async-error`, plist in `(cadr err)`). Catch both where a user's input is sent.
 15. **server.el keeps its `declare-function` line** (else a compiler warning at every start) and defines no `app-server-handle`.
 16. **The framework comes from the project's copy** (`vendor/elisp-next/`): load that nextel-build.el, run that `bin/nextel-routes`. In one Emacs session the writer works from the copy loaded last: for another project, `M-x load-file` that project's copy.
-17. **The server loads every `*.el` under api/ and shared/, hidden ones too.** An Emacs lock file (`api/.#items.el`, a dangling link while a buffer has unsaved changes) makes `nextel-server-load` fail with `(file-missing "Cannot open load file" ...)`, so the server does not start. Save, then start.
+17. **Hidden files are not loaded.** The server and the writer leave out every file and directory whose name starts with `.` (an Emacs lock file, `api/.#items.el`, while a buffer has unsaved changes). Under v0.1.0 the server loaded them, and a lock file stopped it from starting.
 18. **A new api/ file is a route at the next start** of the server, not before. Two api/ files of one pattern are not an error; the first wins.
 19. **What the page sends must be data the server knows.** A symbol the server's Emacs has never read is refused (400 `The request names something unknown: ...`) before `:accepts`: fine for keywords of shared/ schemas and `member` values, not for free `symbol` or `any` fields.
 20. **Errors in a handler are 400, not 500,** and under serve-project.sh their text is hidden unless they are `error` or `user-error` (`The request could not be answered`). Refuse on purpose with `app-server-refuse` and a status.

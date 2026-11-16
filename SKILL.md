@@ -41,9 +41,8 @@ These are a selection; [Rules and pitfalls](doc/api.md#pitfalls) has all 26 with
 - The prefix is `nextel-`, not `next-`. Give your own code a prefix of its own.
 - Every file starts with `-*- lexical-binding: t; -*-`.
 - `:load` returns a function of RESOLVE and REJECT, such as `(nextel-request "GET" ...)`, not a `react-async` task.
-- A page's data is kept for good by page, params and query. After a request that changed data, call `(nextel-reload)`.
+- A page's data is kept by page, params and query, and loaded again in the background when the router comes back after `nextel-stale-ms` (60 s). After a request that changed data, call `(nextel-reload)`.
 - `nextel-defschema NAME` defines `make-NAME`, `NAME-p` and `NAME-FIELD`. These share your namespace, so name your own functions so that they cannot clash.
 - Keywords go in (`nextel-href`, `nextel-param`: `:id`), strings come out (`nextel-query self "v"`; parameters are strings).
 - `server.el` is three lines, including `(declare-function nextel-server-load "nextel-server")`.
-- The server loads every `.el` under `api/` and `shared/`, hidden ones too. Save every buffer before starting it, since an Emacs lock file stops it.
 - An error in a handler is a 400. Refuse on purpose with `app-server-refuse` and a status.
