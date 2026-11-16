@@ -28,7 +28,9 @@ The complete API, written so that a coding agent can work from it without guessi
 
 ## In a project
 
-A project keeps a copy of elisp-next in `vendor/elisp-next/` (the page loads its Lisp from the project, and elisp-studio's preview loads nothing from other sites):
+To start a new one, copy [elisp-web-starter](https://github.com/modeverv/elisp-web-starter): a whole application on elisp-next (pages, API routes, shared types, SQL, tests in a native Emacs and in Chrome), with the versions of elisp-next, elisp-react, elisp-studio and wasmacs pinned, and an AGENTS.md for coding agents. `./run.sh` runs it, `test/run.sh` checks it.
+
+To add elisp-next to a project by hand: a project keeps a copy of elisp-next in `vendor/elisp-next/` (the page loads its Lisp from the project, and elisp-studio's preview loads nothing from other sites):
 
 ```sh
 mkdir -p vendor/elisp-next
